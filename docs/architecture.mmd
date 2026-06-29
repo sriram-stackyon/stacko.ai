@@ -1,0 +1,51 @@
+graph TD
+    subgraph Client["Frontend (React 18 + Vite + Tailwind)"]
+        A[SubmitClaimPage\nClaimForm.jsx] -->|multipart/form-data\npolicy_number, incident, photos| B
+        H[HistoryPage\nClaimsHistory.jsx] -->|GET /api/claims| I
+        H -->|GET /api/claims/{id}| I
+    end
+
+    subgraph API["FastAPI Backend (Uvicorn)"]
+        B[POST /api/claims\nclaims.py] --> C
+        I[GET /api/claims\nGET /api/claims/{id}]
+    end
+
+    subgraph Storage["Supabase Storage"]
+        B -->|upload photos| S[(claim-photos bucket)]
+        S -->|public URLs| C
+    end
+
+    subgraph Pipeline["LangGraph StateGraph (ClaimsState)"]
+        C[intake_node\nvalidate required fields] --> D
+        D[policy_verification_node\ncheck policy active + coverage] --> E
+        E[damage_assessment_node\nGPT-4o Vision → cost + severity] --> F
+        F[fraud_detection_node\nGPT-4o Text → risk + flags] --> G
+        G[adjudication_node\nbusiness rules + LLM → decision] --> GG
+        GG[communication_node\nGPT-4o Text → email draft]
+    end
+
+    subgraph DB["Supabase PostgreSQL"]
+        D -->|SELECT| P[(policies table\nPOL-001..POL-005)]
+        F -->|SELECT prior claims| CL[(claims table)]
+        B -->|INSERT final state| CL
+        I -->|SELECT| CL
+    end
+
+    subgraph LLM["OpenAI GPT-4o"]
+        E -->|image_url content parts| LLM1[Vision API\ndamage_assessment_system.txt]
+        F -->|claim history + details| LLM2[Text API\nfraud_detection_system.txt]
+        G -->|all state values| LLM3[Text API\nadjudication_system.txt]
+        GG -->|decision + context| LLM4[Text API\ncommunication_system.txt]
+    end
+
+    subgraph Results["Result Display"]
+        GG -->|ClaimResultResponse JSON| R[ClaimResult.jsx\ndecision badge + damage + payout]
+        GG -->|email_draft| EM[EmailDraft.jsx\nread-only + copy button]
+    end
+
+    style Pipeline fill:#dbeafe,stroke:#2563eb
+    style LLM fill:#fef3c7,stroke:#d97706
+    style DB fill:#d1fae5,stroke:#059669
+    style Storage fill:#ede9fe,stroke:#7c3aed
+    style Client fill:#fee2e2,stroke:#dc2626
+    style API fill:#f0fdf4,stroke:#16a34a
